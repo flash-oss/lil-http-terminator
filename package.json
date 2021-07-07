@@ -49,7 +49,6 @@
     "url": "https://github.com/flash-oss/lil-http-terminator"
   },
   "scripts": {
-    "prepublishOnly": "npm run build",
     "ci": "npm i && npm t && npm run lint",
     "test": "NODE_ENV=test ava --serial --verbose",
     "cov": "NODE_ENV=test nyc --reporter=lcov --reporter=text-summary ava --serial --verbose",
