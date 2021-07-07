@@ -1,70 +1,59 @@
 {
-  "author": {
-    "email": "gajus@gajus.com",
-    "name": "Gajus Kuizinas",
-    "url": "http://gajus.com"
-  },
   "ava": {
-    "extensions": [
-      "ts"
-    ],
     "files": [
-      "test/http-terminator/**/*"
-    ],
-    "require": [
-      "ts-node/register/transpile-only"
+      "test/src/**/*"
     ]
   },
-  "dependencies": {
-    "delay": "^5.0.0",
-    "roarr": "^4.0.10",
-    "type-fest": "^0.20.2"
-  },
-  "description": "Gracefully terminates HTTP(S) server.",
+  "description": "Zero dependencies, gracefully terminates HTTP(S) server.",
   "devDependencies": {
     "agentkeepalive": "^4.1.4",
     "ava": "^3.15.0",
-    "babel-plugin-istanbul": "^6.0.0",
-    "babel-plugin-transform-export-default-name": "^2.1.0",
-    "coveralls": "^3.1.0",
-    "del-cli": "^3.0.1",
-    "eslint": "^7.19.0",
-    "eslint-config-canonical": "^25.8.15",
-    "gitdown": "^3.1.3",
+    "eslint": "^6.8.0",
     "got": "^11.8.1",
-    "husky": "^4.0.0",
     "nyc": "^15.1.0",
     "pem": "^1.14.4",
-    "semantic-release": "^17.3.8",
-    "sinon": "^9.2.4",
-    "ts-node": "^9.1.1",
-    "typescript": "^4.1.3"
+    "prettier": "^1.19.1",
+    "sinon": "^9.2.4"
+  },
+  "eslintConfig": {
+    "parserOptions": {
+      "ecmaVersion": 2017
+    },
+    "env": {
+      "es6": true,
+      "node": true
+    },
+    "extends": "eslint:recommended"
   },
   "engines": {
-    "node": ">=10"
+    "node": ">=8"
   },
-  "husky": {
-    "hooks": {
-      "pre-commit": "npm run lint && npm run test && npm run build"
-    }
-  },
+  "files": [
+    "src"
+  ],
   "keywords": [
     "kubernetes",
-    "prometheus"
+    "prometheus",
+    "http",
+    "https",
+    "keep-alive",
+    "close",
+    "terminate"
   ],
   "license": "BSD-3-Clause",
-  "main": "./dist/src/index.js",
-  "name": "http-terminator",
+  "source": "src/index.js",
+  "main": "src/index.js",
+  "name": "lil-http-terminator",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gajus/http-terminator"
+    "url": "https://github.com/flash-oss/lil-http-terminator"
   },
   "scripts": {
-    "build": "del-cli ./dist && tsc",
-    "generate-readme": "gitdown ./.README/README.md --output-file ./README.md",
-    "lint": "eslint ./src ./test && tsc --noEmit",
-    "test": "NODE_ENV=test ava --serial --verbose"
+    "prepublishOnly": "npm run build",
+    "ci": "npm i && npm t && npm run lint",
+    "test": "NODE_ENV=test ava --serial --verbose",
+    "cov": "NODE_ENV=test nyc --reporter=lcov --reporter=text-summary ava --serial --verbose",
+    "lint": "eslint ./src ./test"
   },
-  "typings": "./dist/src/index.d.ts",
-  "version": "1.0.0"
+  "version": "0.1.0"
 }
