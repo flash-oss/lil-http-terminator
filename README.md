@@ -2,22 +2,11 @@
 
 Gracefully terminates HTTP(S) server.
 
-This module was forked from [http-terminator](https://github.com/gajus/http-terminator). The important changes:
+This module was forked from the amazing [http-terminator](https://github.com/gajus/http-terminator). The important changes:
 
 - Zero dependencies. The original `http-terminator` brings in more than 10 sub-dependencies.
 - Removed TypeScript and a dozen of supporting files, configurations, etc. No more code transpilation.
 - Simpler API. Now you do `require("lil-http-terminator")({ server });` to get a terminator object.
-
-- [lil-http-terminator 🦾](#lil-http-terminator)
-  - [Behaviour](#lil-http-terminator-behaviour)
-  - [API](#lil-http-terminator-api)
-  - [Usage](#lil-http-terminator-usage)
-    - [Usage with Express](#lil-http-terminator-usage-usage-with-express)
-    - [Usage with Koa](#lil-http-terminator-usage-usage-with-koa)
-    - [Usage with other HTTP frameworks](#lil-http-terminator-usage-usage-with-other-http-frameworks)
-  - [Alternative libraries](#lil-http-terminator-alternative-libraries)
-  - [FAQ](#lil-http-terminator-faq)
-    - [What is the use case for lil-http-terminator?](#lil-http-terminator-faq-what-is-the-use-case-for-lil-http-terminator)
 
 ## Behaviour
 
@@ -63,7 +52,6 @@ async function shutdown(signal) {
 
 process.on("SIGTERM", shutdown); // used by K8s, AWS ECS, etc.
 process.on("SIGINT", shutdown); // Atom, VSCode, WebStorm or Terminal Ctrl+C
-process.on("SIGKILL", shutdown); // https://www.npmjs.com/package/forever default signal
 ```
 
 ## Alternative libraries
