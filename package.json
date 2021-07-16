@@ -55,5 +55,5 @@
     "cov": "NODE_ENV=test nyc --reporter=lcov --reporter=text-summary ava --serial --verbose",
     "lint": "eslint ./src ./test"
   },
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
