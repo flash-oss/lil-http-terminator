@@ -4,10 +4,10 @@ Gracefully terminates HTTP(S) server.
 
 This module was forked from the amazing [http-terminator](https://github.com/gajus/http-terminator). The important changes:
 
-- Zero dependencies. The original `http-terminator` brings in more than 10 sub-dependencies.
+- Zero dependencies, 11 KB on your disk. The original `http-terminator` brings in more than 20 sub-dependencies, >450 files, 2 MB total.
 - Removed TypeScript and a dozen of supporting files, configurations, etc. No more code transpilation.
 - Simpler API. Now you do `require("lil-http-terminator")({ server });` to get a terminator object.
-- The termination never throws. You don't want to handle unexpected exceptions on your server shutdown.
+- The termination never throws. You don't want to handle unexpected exceptions during your server shutdown.
 - Termination won't hang forever if server never closes the port because some browsers disrespect `connection:close` header.
 
 ## Behaviour
