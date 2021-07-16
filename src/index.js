@@ -2,7 +2,19 @@ const assert = require("assert");
 const http = require("http");
 const delay = require("./delay");
 
-module.exports = function HttpTerminator({ server, gracefulTerminationTimeout = 1000, logger = console }) {
+/**
+ * @param server {http.Server}
+ * @param [gracefulTerminationTimeout=1000] How long should we wait before destroying some hung sockets
+ * @param [maxWaitTimeout=30000] How much time you give the HTTP server to be terminated.
+ * @param [logger=console] Prints warnings if something goes non standard way.
+ * @return {{terminate(): Promise<{code: string, success: boolean, message: string, [error]: Error}>}}
+ */
+module.exports = function HttpTerminator({
+    server,
+    gracefulTerminationTimeout = 1000,
+    maxWaitTimeout = 30000,
+    logger = console
+} = {}) {
     assert(server);
 
     const _sockets = new Set();
@@ -52,85 +64,104 @@ module.exports = function HttpTerminator({ server, gracefulTerminationTimeout = 
     return {
         _secureSockets,
         _sockets,
+        /**
+         * Terminates the given server.
+         * @return {Promise<{code: string, success: boolean, message: string, [error]: Error}>}
+         */
         async terminate() {
-            if (terminating) {
-                logger.warn("lil-http-terminator: already terminating HTTP server");
+            try {
+                if (terminating) {
+                    logger.warn("lil-http-terminator: already terminating HTTP server");
 
-                return terminating;
-            }
-
-            let resolveTerminating;
-            let rejectTerminating;
-
-            terminating = new Promise((resolve, reject) => {
-                resolveTerminating = resolve;
-                rejectTerminating = reject;
-            });
-
-            server.on("request", (incomingMessage, outgoingMessage) => {
-                if (!outgoingMessage.headersSent) {
-                    outgoingMessage.setHeader("connection", "close");
-                }
-            });
-
-            for (const socket of _sockets) {
-                // This is the HTTP CONNECT request socket.
-                if (!(socket.server instanceof http.Server)) {
-                    continue;
+                    return terminating;
                 }
 
-                const serverResponse = socket._httpMessage;
+                let resolveTerminating;
 
-                if (serverResponse) {
-                    if (!serverResponse.headersSent) {
-                        serverResponse.setHeader("connection", "close");
+                terminating = Promise.race([
+                    new Promise(resolve => {
+                        resolveTerminating = resolve;
+                    }),
+                    delay(maxWaitTimeout).then(() => ({
+                        success: false,
+                        code: "TIMED_OUT",
+                        message: `Server didn't close in ${maxWaitTimeout} msec`
+                    }))
+                ]);
+
+                server.on("request", (incomingMessage, outgoingMessage) => {
+                    if (!outgoingMessage.headersSent) {
+                        outgoingMessage.setHeader("connection", "close");
                     }
-
-                    continue;
-                }
-
-                destroySocket(socket);
-            }
-
-            for (const socket of _secureSockets) {
-                const serverResponse = socket._httpMessage;
-
-                if (serverResponse) {
-                    if (!serverResponse.headersSent) {
-                        serverResponse.setHeader("connection", "close");
-                    }
-
-                    continue;
-                }
-
-                destroySocket(socket);
-            }
-
-            if (_sockets.size) {
-                await delay(gracefulTerminationTimeout);
+                });
 
                 for (const socket of _sockets) {
+                    // This is the HTTP CONNECT request socket.
+                    if (!(socket.server instanceof http.Server)) {
+                        continue;
+                    }
+
+                    const serverResponse = socket._httpMessage;
+
+                    if (serverResponse) {
+                        if (!serverResponse.headersSent) {
+                            serverResponse.setHeader("connection", "close");
+                        }
+
+                        continue;
+                    }
+
                     destroySocket(socket);
                 }
-            }
-
-            if (_secureSockets.size) {
-                await delay(gracefulTerminationTimeout);
 
                 for (const socket of _secureSockets) {
+                    const serverResponse = socket._httpMessage;
+
+                    if (serverResponse) {
+                        if (!serverResponse.headersSent) {
+                            serverResponse.setHeader("connection", "close");
+                        }
+
+                        continue;
+                    }
+
                     destroySocket(socket);
                 }
-            }
 
-            server.close(error => {
-                if (error) {
-                    rejectTerminating(error);
-                } else {
-                    resolveTerminating();
+                if (_sockets.size) {
+                    await delay(gracefulTerminationTimeout);
+
+                    for (const socket of _sockets) {
+                        destroySocket(socket);
+                    }
                 }
-            });
 
-            return terminating;
+                if (_secureSockets.size) {
+                    await delay(gracefulTerminationTimeout);
+
+                    for (const socket of _secureSockets) {
+                        destroySocket(socket);
+                    }
+                }
+
+                server.close(error => {
+                    if (error) {
+                        logger.warn("lil-http-terminator: server error while closing", error);
+                        resolveTerminating({ success: false, code: "SERVER_ERROR", message: error.message, error });
+                    } else {
+                        resolveTerminating({
+                            success: true,
+                            code: "TERMINATED",
+                            message: "Server successfully closed"
+                        });
+                    }
+                });
+
+                return terminating;
+            } catch (error) {
+                logger.warn("lil-http-terminator: internal error", error);
+                return { success: false, code: "INTERNAL_ERROR", message: error.message, error };
+            }
         }
     };
 };
