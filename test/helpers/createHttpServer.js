@@ -2,38 +2,38 @@ const { createServer } = require("http");
 const { promisify } = require("util");
 
 module.exports = requestHandler => {
-  const server = createServer(requestHandler);
+    const server = createServer(requestHandler);
 
-  let serverShuttingDown;
+    let serverShuttingDown;
 
-  const stop = () => {
-    if (serverShuttingDown) {
-      return serverShuttingDown;
-    }
+    const stop = () => {
+        if (serverShuttingDown) {
+            return serverShuttingDown;
+        }
 
-    serverShuttingDown = promisify(server.close.bind(server))();
+        serverShuttingDown = promisify(server.close.bind(server))();
 
-    return serverShuttingDown;
-  };
+        return serverShuttingDown;
+    };
 
-  const getConnections = () => {
-    return promisify(server.getConnections.bind(server))();
-  };
+    const getConnections = () => {
+        return promisify(server.getConnections.bind(server))();
+    };
 
-  return new Promise((resolve, reject) => {
-    server.once("error", reject);
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
 
-    server.listen(() => {
-      const port = server.address().port;
-      const url = "http://localhost:" + port;
+        server.listen(() => {
+            const port = server.address().port;
+            const url = "http://localhost:" + port;
 
-      resolve({
-        getConnections,
-        port,
-        server,
-        stop,
-        url
-      });
+            resolve({
+                getConnections,
+                port,
+                server,
+                stop,
+                url
+            });
+        });
     });
-  });
 };

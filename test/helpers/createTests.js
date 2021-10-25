@@ -2,7 +2,6 @@ const KeepAliveHttpAgent = require("agentkeepalive");
 const test = require("ava");
 const delay = require("../../src/delay");
 const safeGot = require("got");
-const sinon = require("sinon");
 const createHttpTerminator = require("../../src");
 
 const got = safeGot.extend({
@@ -31,10 +30,10 @@ module.exports = createHttpServer => {
     });
 
     test("terminates hanging sockets after gracefulTerminationTimeout", async t => {
-        const spy = sinon.spy();
+        let serverCreated = false;
 
         const httpServer = await createHttpServer(() => {
-            spy();
+            serverCreated = true;
         });
 
         t.timeout(500);
@@ -48,7 +47,7 @@ module.exports = createHttpServer => {
 
         await delay(50);
 
-        t.true(spy.called);
+        t.true(serverCreated);
 
         terminator.terminate();
 
@@ -63,19 +62,20 @@ module.exports = createHttpServer => {
     });
 
     test("server stops accepting new connections after terminator.terminate() is called", async t => {
-        const stub = sinon.stub();
+        let callCount = 0;
 
-        stub.onCall(0).callsFake((incomingMessage, outgoingMessage) => {
-            setTimeout(() => {
-                outgoingMessage.end("foo");
-            }, 100);
-        });
+        function requestHandler(incomingMessage, outgoingMessage) {
+            if (callCount === 0) {
+                setTimeout(() => {
+                    outgoingMessage.end("foo");
+                }, 100);
+            } else if (callCount === 1) {
+                outgoingMessage.end("bar");
+            }
+            callCount += 1;
+        }
 
-        stub.onCall(1).callsFake((incomingMessage, outgoingMessage) => {
-            outgoingMessage.end("bar");
-        });
-
-        const httpServer = await createHttpServer(stub);
+        const httpServer = await createHttpServer(requestHandler);
 
         t.timeout(500);
 
@@ -148,27 +148,28 @@ module.exports = createHttpServer => {
     });
 
     test("ongoing requests receive {connection: close} header (new request reusing an existing socket)", async t => {
-        const stub = sinon.stub();
+        let callCount = 0;
 
-        stub.onCall(0).callsFake((incomingMessage, outgoingMessage) => {
-            outgoingMessage.write("foo");
+        function requestHandler(incomingMessage, outgoingMessage) {
+            if (callCount === 0) {
+                outgoingMessage.write("foo");
 
-            setTimeout(() => {
-                outgoingMessage.end("bar");
-            }, 50);
-        });
+                setTimeout(() => {
+                    outgoingMessage.end("bar");
+                }, 51);
+            } else if (callCount === 1) {
+                // @todo Unable to intercept the response without the delay.
+                // When `end()` is called immediately, the `request` event
+                // already has `headersSent=true`. It is unclear how to intercept
+                // the response beforehand.
+                setTimeout(() => {
+                    outgoingMessage.end("baz");
+                }, 51);
+            }
+            callCount += 1;
+        }
 
-        stub.onCall(1).callsFake((incomingMessage, outgoingMessage) => {
-            // @todo Unable to intercept the response without the delay.
-            // When `end()` is called immediately, the `request` event
-            // already has `headersSent=true`. It is unclear how to intercept
-            // the response beforehand.
-            setTimeout(() => {
-                outgoingMessage.end("baz");
-            }, 50);
-        });
-
-        const httpServer = await createHttpServer(stub);
+        const httpServer = await createHttpServer(requestHandler);
 
         t.timeout(1000);
 
@@ -204,9 +205,9 @@ module.exports = createHttpServer => {
             retry: 0
         });
 
-        await delay(50);
+        await delay(75);
 
-        t.is(stub.callCount, 2);
+        t.is(callCount, 2);
 
         const response0 = await request0;
 

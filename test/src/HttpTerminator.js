@@ -2,7 +2,6 @@ const KeepAliveHttpAgent = require("agentkeepalive");
 const test = require("ava");
 const delay = require("../../src/delay");
 const safeGot = require("got");
-const sinon = require("sinon");
 const HttpTerminator = require("../../src");
 const createHttpServer = require("../helpers/createHttpServer");
 const createHttpsServer = require("../helpers/createHttpsServer");
@@ -34,10 +33,10 @@ test("terminates HTTP server with no connections", async t => {
 test("terminates hanging sockets after httpResponseTimeout", async t => {
     t.timeout(500);
 
-    const spy = sinon.spy();
+    let serverCreated = false;
 
     const httpServer = await createHttpServer(() => {
-        spy();
+        serverCreated = true;
     });
 
     const terminator = HttpTerminator({
@@ -49,7 +48,7 @@ test("terminates hanging sockets after httpResponseTimeout", async t => {
 
     await delay(50);
 
-    t.true(spy.called);
+    t.true(serverCreated);
 
     const terminationPromise = terminator.terminate();
 
@@ -145,27 +144,28 @@ test("ongoing requests receive {connection: close} header", async t => {
 test("ongoing requests receive {connection: close} header (new request reusing an existing socket)", async t => {
     t.timeout(1000);
 
-    const stub = sinon.stub();
+    let callCount = 0;
 
-    stub.onCall(0).callsFake((incomingMessage, outgoingMessage) => {
-        outgoingMessage.write("foo");
+    function requestHandler(incomingMessage, outgoingMessage) {
+        if (callCount === 0) {
+            outgoingMessage.write("foo");
 
-        setTimeout(() => {
-            outgoingMessage.end("bar");
-        }, 50);
-    });
+            setTimeout(() => {
+                outgoingMessage.end("bar");
+            }, 51);
+        } else if (callCount === 1) {
+            // @todo Unable to intercept the response without the delay.
+            // When `end()` is called immediately, the `request` event
+            // already has `headersSent=true`. It is unclear how to intercept
+            // the response beforehand.
+            setTimeout(() => {
+                outgoingMessage.end("baz");
+            }, 51);
+        }
+        callCount += 1;
+    }
 
-    stub.onCall(1).callsFake((incomingMessage, outgoingMessage) => {
-        // @todo Unable to intercept the response without the delay.
-        // When `end()` is called immediately, the `request` event
-        // already has `headersSent=true`. It is unclear how to intercept
-        // the response beforehand.
-        setTimeout(() => {
-            outgoingMessage.end("baz");
-        }, 50);
-    });
-
-    const httpServer = await createHttpServer(stub);
+    const httpServer = await createHttpServer(requestHandler);
 
     const terminator = HttpTerminator({
         gracefulTerminationTimeout: 150,
@@ -193,9 +193,9 @@ test("ongoing requests receive {connection: close} header (new request reusing a
         retry: 0
     });
 
-    await delay(50);
+    await delay(75);
 
-    t.is(stub.callCount, 2);
+    t.is(callCount, 2);
 
     const response0 = await request0;
 
@@ -313,4 +313,38 @@ test("returns {success: false, code: 'INTERNAL_ERROR'} if unexpected exception",
 
     t.false(result.success);
     t.is(result.code, "INTERNAL_ERROR");
+});
+
+test("closes immediately after in-flight connections are closed", async t => {
+    t.timeout(1000);
+
+    function requestHandler(incomingMessage, outgoingMessage) {
+        setTimeout(() => {
+            outgoingMessage.end("foo");
+        }, 100);
+    }
+
+    const httpServer = await createHttpServer(requestHandler);
+
+    t.true(httpServer.server.listening);
+
+    const terminator = HttpTerminator({
+        gracefulTerminationTimeout: 500,
+        server: httpServer.server
+    });
+
+    got(httpServer.url);
+
+    await delay(50);
+
+    t.is(await httpServer.getConnections(), 1);
+
+    terminator.terminate();
+
+    // Wait for outgoingMessage.end to be called, plus a few extra ms for the
+    // terminator to finish polling in-flight connections. (Do not, however, wait
+    // long enough to trigger graceful termination.)
+    await delay(75);
+
+    t.is(await httpServer.getConnections(), 0);
 });

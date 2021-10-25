@@ -128,16 +128,13 @@ module.exports = function HttpTerminator({
                     destroySocket(socket);
                 }
 
-                if (_sockets.size) {
-                    await delay(gracefulTerminationTimeout);
+                if (_sockets.size || _secureSockets.size) {
+                    const endWaitAt = Date.now() + gracefulTerminationTimeout;
+                    while ((_sockets.size || _secureSockets.size) && Date.now() < endWaitAt) await delay(1);
 
                     for (const socket of _sockets) {
                         destroySocket(socket);
                     }
-                }
-
-                if (_secureSockets.size) {
-                    await delay(gracefulTerminationTimeout);
 
                     for (const socket of _secureSockets) {
                         destroySocket(socket);

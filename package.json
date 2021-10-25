@@ -12,8 +12,7 @@
     "got": "^11.8.1",
     "nyc": "^15.1.0",
     "pem": "^1.14.4",
-    "prettier": "^1.19.1",
-    "sinon": "^9.2.4"
+    "prettier": "^1.19.1"
   },
   "eslintConfig": {
     "parserOptions": {
