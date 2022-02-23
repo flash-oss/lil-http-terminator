@@ -13,7 +13,7 @@ module.exports = function HttpTerminator({
     server,
     gracefulTerminationTimeout = 1000,
     maxWaitTimeout = 30000,
-    logger = console
+    logger = console,
 } = {}) {
     assert(server);
 
@@ -22,7 +22,7 @@ module.exports = function HttpTerminator({
 
     let terminating;
 
-    server.on("connection", socket => {
+    server.on("connection", (socket) => {
         if (terminating) {
             socket.destroy();
         } else {
@@ -34,7 +34,7 @@ module.exports = function HttpTerminator({
         }
     });
 
-    server.on("secureConnection", socket => {
+    server.on("secureConnection", (socket) => {
         if (terminating) {
             socket.destroy();
         } else {
@@ -79,14 +79,14 @@ module.exports = function HttpTerminator({
                 let resolveTerminating;
 
                 terminating = Promise.race([
-                    new Promise(resolve => {
+                    new Promise((resolve) => {
                         resolveTerminating = resolve;
                     }),
                     delay(maxWaitTimeout).then(() => ({
                         success: false,
                         code: "TIMED_OUT",
-                        message: `Server didn't close in ${maxWaitTimeout} msec`
-                    }))
+                        message: `Server didn't close in ${maxWaitTimeout} msec`,
+                    })),
                 ]);
 
                 server.on("request", (incomingMessage, outgoingMessage) => {
@@ -141,7 +141,7 @@ module.exports = function HttpTerminator({
                     }
                 }
 
-                server.close(error => {
+                server.close((error) => {
                     if (error) {
                         logger.warn("lil-http-terminator: server error while closing", error);
                         resolveTerminating({ success: false, code: "SERVER_ERROR", message: error.message, error });
@@ -149,7 +149,7 @@ module.exports = function HttpTerminator({
                         resolveTerminating({
                             success: true,
                             code: "TERMINATED",
-                            message: "Server successfully closed"
+                            message: "Server successfully closed",
                         });
                     }
                 });
@@ -159,6 +159,6 @@ module.exports = function HttpTerminator({
                 logger.warn("lil-http-terminator: internal error", error);
                 return { success: false, code: "INTERNAL_ERROR", message: error.message, error };
             }
-        }
+        },
     };
 };

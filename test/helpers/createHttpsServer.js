@@ -2,16 +2,16 @@ const { createServer } = require("https");
 const { promisify } = require("util");
 const pem = require("pem");
 
-module.exports = async requestHandler => {
+module.exports = async (requestHandler) => {
     const { serviceKey, certificate, csr } = await promisify(pem.createCertificate)({
         days: 365,
-        selfSigned: true
+        selfSigned: true,
     });
 
     const httpsOptions = {
         ca: csr,
         cert: certificate,
-        key: serviceKey
+        key: serviceKey,
     };
 
     const server = createServer(httpsOptions, requestHandler);
@@ -44,7 +44,7 @@ module.exports = async requestHandler => {
                 port,
                 server,
                 stop,
-                url
+                url,
             });
         });
     });

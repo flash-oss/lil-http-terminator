@@ -1,5 +1,5 @@
+const assert = require("assert");
 const KeepAliveHttpAgent = require("agentkeepalive");
-const test = require("ava");
 const delay = require("../../src/delay");
 const safeGot = require("got");
 const createHttpTerminator = require("../../src");
@@ -12,13 +12,13 @@ const got = safeGot.extend({
 
 const KeepAliveHttpsAgent = KeepAliveHttpAgent.HttpsAgent;
 
-module.exports = createHttpServer => {
-    test("terminates HTTP server with no connections", async t => {
+module.exports = function(createHttpServer) {
+    it("terminates HTTP server with no connections", async function() {
         const httpServer = await createHttpServer(() => {});
 
-        t.timeout(100);
+        this.timeout(1000);
 
-        t.true(httpServer.server.listening);
+        assert.strictEqual(true, httpServer.server.listening);
 
         const terminator = createHttpTerminator({
             server: httpServer.server
@@ -26,17 +26,17 @@ module.exports = createHttpServer => {
 
         await terminator.terminate();
 
-        t.false(httpServer.server.listening);
+        assert.notStrictEqual(httpServer.server.listening, true);
     });
 
-    test("terminates hanging sockets after gracefulTerminationTimeout", async t => {
+    it("terminates hanging sockets after gracefulTerminationTimeout", async function() {
         let serverCreated = false;
 
         const httpServer = await createHttpServer(() => {
             serverCreated = true;
         });
 
-        t.timeout(500);
+        this.timeout(500);
 
         const terminator = createHttpTerminator({
             gracefulTerminationTimeout: 150,
@@ -47,21 +47,21 @@ module.exports = createHttpServer => {
 
         await delay(50);
 
-        t.true(serverCreated);
+        assert.strictEqual(true, serverCreated);
 
         terminator.terminate();
 
         await delay(100);
 
         // The timeout has not passed.
-        t.is(await httpServer.getConnections(), 1);
+        assert.strictEqual(await httpServer.getConnections(), 1);
 
         await delay(100);
 
-        t.is(await httpServer.getConnections(), 0);
+        assert.strictEqual(await httpServer.getConnections(), 0);
     });
 
-    test("server stops accepting new connections after terminator.terminate() is called", async t => {
+    it("server stops accepting new connections after terminator.terminate() is called", async function() {
         let callCount = 0;
 
         function requestHandler(incomingMessage, outgoingMessage) {
@@ -77,7 +77,7 @@ module.exports = createHttpServer => {
 
         const httpServer = await createHttpServer(requestHandler);
 
-        t.timeout(500);
+        this.timeout(500);
 
         const terminator = createHttpTerminator({
             gracefulTerminationTimeout: 150,
@@ -100,22 +100,22 @@ module.exports = createHttpServer => {
         });
 
         // @todo https://stackoverflow.com/q/59832897/368691
-        await t.throwsAsync(request1);
+        await assert.rejects(request1);
 
         const response0 = await request0;
 
-        t.is(response0.headers.connection, "close");
-        t.is(response0.body, "foo");
+        assert.strictEqual(response0.headers.connection, "close");
+        assert.strictEqual(response0.body, "foo");
     });
 
-    test("ongoing requests receive {connection: close} header", async t => {
+    it("ongoing requests receive {connection: close} header", async function() {
         const httpServer = await createHttpServer((incomingMessage, outgoingMessage) => {
             setTimeout(() => {
                 outgoingMessage.end("foo");
             }, 100);
         });
 
-        t.timeout(600);
+        this.timeout(600);
 
         const terminator = createHttpTerminator({
             gracefulTerminationTimeout: 150,
@@ -143,11 +143,11 @@ module.exports = createHttpServer => {
 
         const response = await request;
 
-        t.is(response.headers.connection, "close");
-        t.is(response.body, "foo");
+        assert.strictEqual(response.headers.connection, "close");
+        assert.strictEqual(response.body, "foo");
     });
 
-    test("ongoing requests receive {connection: close} header (new request reusing an existing socket)", async t => {
+    it("ongoing requests receive {connection: close} header (new request reusing an existing socket)", async function() {
         let callCount = 0;
 
         function requestHandler(incomingMessage, outgoingMessage) {
@@ -171,7 +171,7 @@ module.exports = createHttpServer => {
 
         const httpServer = await createHttpServer(requestHandler);
 
-        t.timeout(1000);
+        this.timeout(1000);
 
         const terminator = createHttpTerminator({
             gracefulTerminationTimeout: 150,
@@ -207,27 +207,27 @@ module.exports = createHttpServer => {
 
         await delay(75);
 
-        t.is(callCount, 2);
+        assert.strictEqual(callCount, 2);
 
         const response0 = await request0;
 
-        t.is(response0.headers.connection, "keep-alive");
-        t.is(response0.body, "foobar");
+        assert.strictEqual(response0.headers.connection, "keep-alive");
+        assert.strictEqual(response0.body, "foobar");
 
         const response1 = await request1;
 
-        t.is(response1.headers.connection, "close");
-        t.is(response1.body, "baz");
+        assert.strictEqual(response1.headers.connection, "close");
+        assert.strictEqual(response1.body, "baz");
     });
 
-    test("does not send {connection: close} when server is not terminating", async t => {
+    it("does not send {connection: close} when server is not terminating", async function() {
         const httpServer = await createHttpServer((incomingMessage, outgoingMessage) => {
             setTimeout(() => {
                 outgoingMessage.end("foo");
             }, 50);
         });
 
-        t.timeout(100);
+        this.timeout(1000);
 
         createHttpTerminator({
             server: httpServer.server
@@ -248,6 +248,6 @@ module.exports = createHttpServer => {
             }
         });
 
-        t.is(response.headers.connection, "keep-alive");
+        assert.strictEqual(response.headers.connection, "keep-alive");
     });
 };

@@ -1,5 +1,5 @@
+const assert = require("assert");
 const KeepAliveHttpAgent = require("agentkeepalive");
-const test = require("ava");
 const delay = require("../../src/delay");
 const safeGot = require("got");
 const HttpTerminator = require("../../src");
@@ -12,339 +12,341 @@ const got = safeGot.extend({
     }
 });
 
-test("terminates HTTP server with no connections", async t => {
-    t.timeout(100);
+describe("lil-http-terminator", function() {
+    it("terminates HTTP server with no connections", async function() {
+        this.timeout(100);
 
-    const httpServer = await createHttpServer(() => {});
+        const httpServer = await createHttpServer(() => {});
 
-    t.true(httpServer.server.listening);
+        assert.strictEqual(httpServer.server.listening, true);
 
-    const terminator = HttpTerminator({
-        server: httpServer.server
+        const terminator = HttpTerminator({
+            server: httpServer.server
+        });
+
+        const result = await terminator.terminate();
+
+        assert.notStrictEqual(httpServer.server.listening, true);
+        assert.strictEqual(result.success, true);
+        assert.strictEqual(result.code, "TERMINATED");
     });
 
-    const result = await terminator.terminate();
+    it("terminates hanging sockets after httpResponseTimeout", async function() {
+        this.timeout(500);
 
-    t.false(httpServer.server.listening);
-    t.true(result.success);
-    t.is(result.code, "TERMINATED");
-});
+        let serverCreated = false;
 
-test("terminates hanging sockets after httpResponseTimeout", async t => {
-    t.timeout(500);
+        const httpServer = await createHttpServer(() => {
+            serverCreated = true;
+        });
 
-    let serverCreated = false;
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 150,
+            server: httpServer.server
+        });
 
-    const httpServer = await createHttpServer(() => {
-        serverCreated = true;
+        got(httpServer.url);
+
+        await delay(50);
+
+        assert.strictEqual(serverCreated, true);
+
+        const terminationPromise = terminator.terminate();
+
+        await delay(100);
+
+        // The timeout has not passed.
+        assert.strictEqual(await httpServer.getConnections(), 1);
+
+        await delay(100);
+
+        assert.strictEqual(await httpServer.getConnections(), 0);
+
+        const result = await terminationPromise;
+
+        assert.strictEqual(result.success, true);
     });
 
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 150,
-        server: httpServer.server
-    });
+    it("server stops accepting new connections after terminator.terminate() is called", async function() {
+        this.timeout(500);
 
-    got(httpServer.url);
-
-    await delay(50);
-
-    t.true(serverCreated);
-
-    const terminationPromise = terminator.terminate();
-
-    await delay(100);
-
-    // The timeout has not passed.
-    t.is(await httpServer.getConnections(), 1);
-
-    await delay(100);
-
-    t.is(await httpServer.getConnections(), 0);
-
-    const result = await terminationPromise;
-
-    t.true(result.success);
-});
-
-test("server stops accepting new connections after terminator.terminate() is called", async t => {
-    t.timeout(500);
-
-    const httpServer = await createHttpServer((incomingMessage, outgoingMessage) => {
-        setTimeout(() => {
-            outgoingMessage.end("foo");
-        }, 100);
-    });
-
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 150,
-        server: httpServer.server
-    });
-
-    const request0 = got(httpServer.url);
-
-    await delay(50);
-
-    const terminationPromise = terminator.terminate();
-
-    await delay(50);
-
-    const request1 = got(httpServer.url, {
-        retry: 0,
-        timeout: {
-            connect: 50
-        }
-    });
-
-    await t.throwsAsync(request1);
-
-    const response0 = await request0;
-
-    t.is(response0.headers.connection, "close");
-    t.is(response0.body, "foo");
-
-    const result = await terminationPromise;
-
-    t.true(result.success);
-});
-
-test("ongoing requests receive {connection: close} header", async t => {
-    t.timeout(500);
-
-    const httpServer = await createHttpServer((incomingMessage, outgoingMessage) => {
-        setTimeout(() => {
-            outgoingMessage.end("foo");
-        }, 100);
-    });
-
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 150,
-        server: httpServer.server
-    });
-
-    const request = got(httpServer.url, {
-        agent: {
-            http: new KeepAliveHttpAgent()
-        }
-    });
-
-    await delay(50);
-
-    const terminationPromise = terminator.terminate();
-
-    const response = await request;
-
-    t.is(response.headers.connection, "close");
-    t.is(response.body, "foo");
-
-    const result = await terminationPromise;
-
-    t.true(result.success);
-});
-
-test("ongoing requests receive {connection: close} header (new request reusing an existing socket)", async t => {
-    t.timeout(1000);
-
-    let callCount = 0;
-
-    function requestHandler(incomingMessage, outgoingMessage) {
-        if (callCount === 0) {
-            outgoingMessage.write("foo");
-
+        const httpServer = await createHttpServer((incomingMessage, outgoingMessage) => {
             setTimeout(() => {
-                outgoingMessage.end("bar");
-            }, 51);
-        } else if (callCount === 1) {
-            // @todo Unable to intercept the response without the delay.
-            // When `end()` is called immediately, the `request` event
-            // already has `headersSent=true`. It is unclear how to intercept
-            // the response beforehand.
-            setTimeout(() => {
-                outgoingMessage.end("baz");
-            }, 51);
-        }
-        callCount += 1;
-    }
+                outgoingMessage.end("foo");
+            }, 100);
+        });
 
-    const httpServer = await createHttpServer(requestHandler);
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 150,
+            server: httpServer.server
+        });
 
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 150,
-        server: httpServer.server
-    });
+        const request0 = got(httpServer.url);
 
-    const agent = new KeepAliveHttpAgent({
-        maxSockets: 1
-    });
+        await delay(50);
 
-    const request0 = got(httpServer.url, {
-        agent: {
-            http: agent
-        }
-    });
+        const terminationPromise = terminator.terminate();
 
-    await delay(50);
+        await delay(50);
 
-    const terminationPromise = terminator.terminate();
-
-    const request1 = got(httpServer.url, {
-        agent: {
-            http: agent
-        },
-        retry: 0
-    });
-
-    await delay(75);
-
-    t.is(callCount, 2);
-
-    const response0 = await request0;
-
-    t.is(response0.headers.connection, "keep-alive");
-    t.is(response0.body, "foobar");
-
-    const response1 = await request1;
-
-    t.is(response1.headers.connection, "close");
-    t.is(response1.body, "baz");
-
-    const result = await terminationPromise;
-
-    t.true(result.success);
-});
-
-test("empties internal socket collection", async t => {
-    t.timeout(500);
-
-    const httpServer = await createHttpServer((incomingMessage, outgoingMessage) => {
-        outgoingMessage.end("foo");
-    });
-
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 150,
-        server: httpServer.server
-    });
-
-    await got(httpServer.url);
-
-    await delay(50);
-
-    t.is(terminator._sockets.size, 0);
-    t.is(terminator._secureSockets.size, 0);
-
-    const result = await terminator.terminate();
-
-    t.true(result.success);
-});
-
-test("empties internal socket collection for https server", async t => {
-    t.timeout(500);
-
-    const httpsServer = await createHttpsServer((incomingMessage, outgoingMessage) => {
-        outgoingMessage.end("foo");
-    });
-
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 150,
-        server: httpsServer.server
-    });
-
-    await got(httpsServer.url);
-
-    await delay(50);
-
-    t.is(terminator._secureSockets.size, 0);
-
-    const result = await terminator.terminate();
-
-    t.true(result.success);
-});
-
-test("returns {success: false, code: 'TIMED_OUT'} if server couldn't close in time", async t => {
-    t.timeout(500);
-
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 100,
-        maxWaitTimeout: 300,
-        server: {
-            on: () => {},
-            close: cb => setTimeout(cb, 400)
-        }
-    });
-
-    const result = await terminator.terminate();
-
-    t.false(result.success);
-    t.is(result.code, "TIMED_OUT");
-});
-
-test("returns {success: false, code: 'SERVER_ERROR'} if server closing gives error", async t => {
-    t.timeout(500);
-
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 10,
-        logger: { warn: () => {} },
-        server: {
-            on: () => {},
-            close: cb => setTimeout(() => cb(new Error("Can't close socket for some reason")), 400)
-        }
-    });
-
-    const result = await terminator.terminate();
-
-    t.false(result.success);
-    t.is(result.code, "SERVER_ERROR");
-});
-
-test("returns {success: false, code: 'INTERNAL_ERROR'} if unexpected exception", async t => {
-    t.timeout(500);
-
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 10,
-        logger: { warn: () => {} },
-        server: {
-            on: () => {},
-            close: () => {
-                throw new Error("Unexpected");
+        const request1 = got(httpServer.url, {
+            retry: 0,
+            timeout: {
+                connect: 50
             }
+        });
+
+        await assert.rejects(request1);
+
+        const response0 = await request0;
+
+        assert.strictEqual(response0.headers.connection, "close");
+        assert.strictEqual(response0.body, "foo");
+
+        const result = await terminationPromise;
+
+        assert.strictEqual(result.success, true);
+    });
+
+    it("ongoing requests receive {connection: close} header", async function() {
+        this.timeout(500);
+
+        const httpServer = await createHttpServer((incomingMessage, outgoingMessage) => {
+            setTimeout(() => {
+                outgoingMessage.end("foo");
+            }, 100);
+        });
+
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 150,
+            server: httpServer.server
+        });
+
+        const request = got(httpServer.url, {
+            agent: {
+                http: new KeepAliveHttpAgent()
+            }
+        });
+
+        await delay(50);
+
+        const terminationPromise = terminator.terminate();
+
+        const response = await request;
+
+        assert.strictEqual(response.headers.connection, "close");
+        assert.strictEqual(response.body, "foo");
+
+        const result = await terminationPromise;
+
+        assert.strictEqual(result.success, true);
+    });
+
+    it("ongoing requests receive {connection: close} header (new request reusing an existing socket)", async function() {
+        this.timeout(1000);
+
+        let callCount = 0;
+
+        function requestHandler(incomingMessage, outgoingMessage) {
+            if (callCount === 0) {
+                outgoingMessage.write("foo");
+
+                setTimeout(() => {
+                    outgoingMessage.end("bar");
+                }, 51);
+            } else if (callCount === 1) {
+                // @todo Unable to intercept the response without the delay.
+                // When `end()` is called immediately, the `request` event
+                // already has `headersSent=true`. It is unclear how to intercept
+                // the response beforehand.
+                setTimeout(() => {
+                    outgoingMessage.end("baz");
+                }, 51);
+            }
+            callCount += 1;
         }
+
+        const httpServer = await createHttpServer(requestHandler);
+
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 150,
+            server: httpServer.server
+        });
+
+        const agent = new KeepAliveHttpAgent({
+            maxSockets: 1
+        });
+
+        const request0 = got(httpServer.url, {
+            agent: {
+                http: agent
+            }
+        });
+
+        await delay(50);
+
+        const terminationPromise = terminator.terminate();
+
+        const request1 = got(httpServer.url, {
+            agent: {
+                http: agent
+            },
+            retry: 0
+        });
+
+        await delay(75);
+
+        assert.strictEqual(callCount, 2);
+
+        const response0 = await request0;
+
+        assert.strictEqual(response0.headers.connection, "keep-alive");
+        assert.strictEqual(response0.body, "foobar");
+
+        const response1 = await request1;
+
+        assert.strictEqual(response1.headers.connection, "close");
+        assert.strictEqual(response1.body, "baz");
+
+        const result = await terminationPromise;
+
+        assert.strictEqual(result.success, true);
     });
 
-    const result = await terminator.terminate();
+    it("empties internal socket collection", async function() {
+        this.timeout(500);
 
-    t.false(result.success);
-    t.is(result.code, "INTERNAL_ERROR");
-});
-
-test("closes immediately after in-flight connections are closed", async t => {
-    t.timeout(1000);
-
-    function requestHandler(incomingMessage, outgoingMessage) {
-        setTimeout(() => {
+        const httpServer = await createHttpServer(function(incomingMessage, outgoingMessage) {
             outgoingMessage.end("foo");
-        }, 100);
-    }
+        });
 
-    const httpServer = await createHttpServer(requestHandler);
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 150,
+            server: httpServer.server
+        });
 
-    t.true(httpServer.server.listening);
+        await got(httpServer.url);
 
-    const terminator = HttpTerminator({
-        gracefulTerminationTimeout: 500,
-        server: httpServer.server
+        await delay(50);
+
+        assert.strictEqual(terminator._sockets.size, 0);
+        assert.strictEqual(terminator._secureSockets.size, 0);
+
+        const result = await terminator.terminate();
+
+        assert.strictEqual(result.success, true);
     });
 
-    got(httpServer.url);
+    it("empties internal socket collection for https server", async function() {
+        this.timeout(500);
 
-    await delay(50);
+        const httpsServer = await createHttpsServer((incomingMessage, outgoingMessage) => {
+            outgoingMessage.end("foo");
+        });
 
-    t.is(await httpServer.getConnections(), 1);
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 150,
+            server: httpsServer.server
+        });
 
-    terminator.terminate();
+        await got(httpsServer.url);
 
-    // Wait for outgoingMessage.end to be called, plus a few extra ms for the
-    // terminator to finish polling in-flight connections. (Do not, however, wait
-    // long enough to trigger graceful termination.)
-    await delay(75);
+        await delay(50);
 
-    t.is(await httpServer.getConnections(), 0);
+        assert.strictEqual(terminator._secureSockets.size, 0);
+
+        const result = await terminator.terminate();
+
+        assert.strictEqual(result.success, true);
+    });
+
+    it("returns {success: false, code: 'TIMED_OUT'} if server couldn't close in time", async function() {
+        this.timeout(500);
+
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 100,
+            maxWaitTimeout: 300,
+            server: {
+                on: () => {},
+                close: cb => setTimeout(cb, 400)
+            }
+        });
+
+        const result = await terminator.terminate();
+
+        assert.notStrictEqual(result.success, true);
+        assert.strictEqual(result.code, "TIMED_OUT");
+    });
+
+    it("returns {success: false, code: 'SERVER_ERROR'} if server closing gives error", async function() {
+        this.timeout(500);
+
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 10,
+            logger: { warn: () => {} },
+            server: {
+                on: () => {},
+                close: cb => setTimeout(() => cb(new Error("Can't close socket for some reason")), 400)
+            }
+        });
+
+        const result = await terminator.terminate();
+
+        assert.notStrictEqual(result.success, true);
+        assert.strictEqual(result.code, "SERVER_ERROR");
+    });
+
+    it("returns {success: false, code: 'INTERNAL_ERROR'} if unexpected exception", async function() {
+        this.timeout(500);
+
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 10,
+            logger: { warn: () => {} },
+            server: {
+                on: () => {},
+                close: () => {
+                    throw new Error("Unexpected");
+                }
+            }
+        });
+
+        const result = await terminator.terminate();
+
+        assert.notStrictEqual(result.success, true);
+        assert.strictEqual(result.code, "INTERNAL_ERROR");
+    });
+
+    it("closes immediately after in-flight connections are closed", async function() {
+        this.timeout(1000);
+
+        function requestHandler(incomingMessage, outgoingMessage) {
+            setTimeout(() => {
+                outgoingMessage.end("foo");
+            }, 100);
+        }
+
+        const httpServer = await createHttpServer(requestHandler);
+
+        assert.strictEqual(httpServer.server.listening, true);
+
+        const terminator = HttpTerminator({
+            gracefulTerminationTimeout: 500,
+            server: httpServer.server
+        });
+
+        got(httpServer.url);
+
+        await delay(50);
+
+        assert.strictEqual(await httpServer.getConnections(), 1);
+
+        terminator.terminate();
+
+        // Wait for outgoingMessage.end to be called, plus a few extra ms for the
+        // terminator to finish polling in-flight connections. (Do not, however, wait
+        // long enough to trigger graceful termination.)
+        await delay(75);
+
+        assert.strictEqual(await httpServer.getConnections(), 0);
+    });
 });

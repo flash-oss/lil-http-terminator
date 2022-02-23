@@ -1,7 +1,7 @@
 const { createServer } = require("http");
 const { promisify } = require("util");
 
-module.exports = requestHandler => {
+module.exports = (requestHandler) => {
     const server = createServer(requestHandler);
 
     let serverShuttingDown;
@@ -32,7 +32,7 @@ module.exports = requestHandler => {
                 port,
                 server,
                 stop,
-                url
+                url,
             });
         });
     });
