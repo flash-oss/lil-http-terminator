@@ -76,6 +76,9 @@ module.exports = function HttpTerminator({
                     return terminating;
                 }
 
+                // This is a built-in method available starting Node 16. Can speeds up things by a few seconds.
+                if (server.closeIdleConnections) server.closeIdleConnections();
+
                 let resolveTerminating;
 
                 terminating = Promise.race([
@@ -85,7 +88,7 @@ module.exports = function HttpTerminator({
                     delay(maxWaitTimeout).then(() => ({
                         success: false,
                         code: "TIMED_OUT",
-                        message: `Server didn't close in ${maxWaitTimeout} msec`,
+                        message: `Server didn't close in ${maxWaitTimeout} msec. Use server.closeAllConnections()`,
                     })),
                 ]);
 
